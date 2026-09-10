@@ -12,5 +12,3 @@
 | Evaluation and statistical analysis | Planned for public release | `models/evaluate.py`, `models/metric_and_visualization.py`|
 
 YDFID-1 is provided by the Zhang Hongwei Artificial Intelligence Research Group at Xi'an Polytechnic University. Request **version 1** following the provider's instructions. Its original image archive and masks are not included in this repository. The provider's page also describes later versions; they must not be substituted for the version used in this study.
-
-MVTec-AD and VisA should be obtained from their original providers: [MVTEC_OFFICIAL_DATA_URL] and [VISA_OFFICIAL_DATA_URL]. The fixed manifests identify the actual samples and their roles in our experiments. Dataset access terms are separate from the software license.
