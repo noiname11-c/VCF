@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from models.VPB import Context_Prompting, TextEncoder
 from models.model_CLIP import Load_CLIP, tokenize
-from models.modules.Moga import MultiOrderGatedAggregation
-from models.modules.CAFM import CAFM
+from models.modules.VOGA import MultiOrderGatedAggregation
+from models.modules.CIRA import CIRA
 
 
 def count_parameters(model: nn.Module, trainable_only: bool = False) -> int:
@@ -203,8 +203,8 @@ def main():
 
     # 各子模块参数
     sub_modules = {
-        "VOGA (×4)": bayes_vcf.moga_blocks,
-        "CMF_Fuse (含4×CAFM)": bayes_vcf.fuse,
+        "VOGA (×4)": bayes_vcf.voga_blocks,
+        "CMF_Fuse (含4×CIRA)": bayes_vcf.fuse,
         "RCA (Zero_Parameter)": bayes_vcf.RCA,
         "PFL_context": bayes_vcf.PFL_context,
         "PFL_normal": bayes_vcf.PFL_normal,
@@ -261,18 +261,18 @@ def main():
     print(f"    单个VOGA: ~{voga_single/1e9:.2f} GFLOPs")
     print(f"    4×VOGA合计: ~{voga_total/1e9:.2f} GFLOPs")
 
-    # CIRA/CAFM FLOPs
-    print("\n  CIRA (CAFM ×4) FLOPs 估算:")
-    # Each CAFM: 4×1×1conv(C→C/2) + 4×1×1conv(C/2→C) + matmul + 2×3×3conv
-    cafm_single = (
+    # CIRA/CIRA FLOPs
+    print("\n  CIRA (CIRA ×4) FLOPs 估算:")
+    # Each CIRA: 4×1×1conv(C→C/2) + 4×1×1conv(C/2→C) + matmul + 2×3×3conv
+    CIRA_single = (
         4 * 1024 * 512 * 37 * 37 +    # avg1/max1/avg2/max2
         4 * 512 * 1024 * 37 * 37 +    # avg11/max11/avg22/max22
         1024 * 1024 * 37 +             # matmul cross
         2 * (2 * 3 * 3 * 37 * 37)     # spatial convs
     ) * 2  # MACs → FLOPs
-    cafm_total = cafm_single * 4
-    print(f"    单个CAFM: ~{cafm_single/1e6:.2f} MFLOPs")
-    print(f"    4×CAFM合计: ~{cafm_total/1e9:.2f} GFLOPs")
+    CIRA_total = CIRA_single * 4
+    print(f"    单个CIRA: ~{CIRA_single/1e6:.2f} MFLOPs")
+    print(f"    4×CIRA合计: ~{CIRA_total/1e9:.2f} GFLOPs")
 
     # PFL FLOPs
     print("\n  PFL (×3) FLOPs 估算:")
@@ -288,43 +288,13 @@ def main():
     print(f"    3×PFL合计: ~{pfl_total/1e6:.2f} MFLOPs")
 
     # Total overhead
-    overhead = voga_total + cafm_total + pfl_total
+    overhead = voga_total + CIRA_total + pfl_total
     print(f"\n  Bayes-VCF 新增模块总 FLOPs: ~{overhead/1e9:.2f} GFLOPs")
     print(f"  占CLIP视觉编码的比例: ~{overhead/(230e9)*100:.1f}%")
 
     # ============ 4. 推理速度测量 ============
     mean_time, fps = measure_inference_time(
         bayes_vcf, model_clip, text_encoder, args, device)
-
-    # ============ 5. 汇总输出 ============
-    print("\n" + "=" * 70)
-    print("汇总")
-    print("=" * 70)
-    print(f"""
-  指标                        数值
-  ─────────────────────────────────────────
-  图像尺寸                      {args.image_size}×{args.image_size}
-  CLIP 总参数                  {format_params(total_clip)} (冻结)
-  Bayes-VCF 新增可训练参数       {format_params(trainable_bayes)}
-  新增模块 FLOPs               ~{overhead/1e9:.2f} GFLOPs
-  推理时间 (单张, RTX 4090)     {mean_time:.2f} ms
-  FPS                          {fps:.2f}
-  ─────────────────────────────────────────
-""")
-
-    # 与论文中其他方法的对比估算
-    print("与基线方法的效率对比 (估算):")
-    print(f"""
-  方法             可训练参数      推理时间 (估算)
-  ─────────────────────────────────────────────────
-  APRIL-GAN        ~150M          ~200 ms (含生成器)
-  AnomalyCLIP      ~5M            ~80 ms
-  AdaCLIP          ~8M            ~90 ms
-  Bayes-PFL        ~35M           ~120 ms
-  Bayes-VCF (Ours) {format_params(trainable_bayes):>10}    {mean_time:.1f} ms
-  ─────────────────────────────────────────────────
-""")
-
 
 if __name__ == "__main__":
     main()
