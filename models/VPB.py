@@ -111,10 +111,10 @@ class Zero_Parameter(nn.Module):
         return F_t_a, F_s
     
         
-class CMF_Fuse(nn.Module):
-    """使用CMF进行多层特征融合"""
+class CIRA_Fuse(nn.Module):
+    """使用CIRA进行多层特征融合"""
     def __init__(self, vision_width, text_width, num_layers=4):
-        super(CMF_Fuse, self).__init__()
+        super(CIRA_Fuse, self).__init__()
         self.num_layers = num_layers
         self.vision_width = vision_width
         self.text_width = text_width
@@ -126,7 +126,7 @@ class CMF_Fuse(nn.Module):
             )
         
         # 为每一层创建独立的CIRA模块
-        self.cmf_blocks = nn.ModuleList([
+        self.cira_blocks = nn.ModuleList([
             CIRA(in_channels=vision_width)
             for _ in range(num_layers)
         ])
@@ -149,22 +149,22 @@ class CMF_Fuse(nn.Module):
         N = patch_tokens[0].shape[1]
         H = W = int(np.sqrt(N))
         
-        # 逐层进行CMF融合
+        # 逐层进行CIRA融合
         fused_features = []
         for i, patch_feat in enumerate(patch_tokens):
             # 将patch特征reshape为[B, C, H, W]格式
             feat = patch_feat.permute(0, 2, 1).reshape(B, self.vision_width, H, W)
             
-            # 如果有全局特征，将其扩展为相同的空间尺寸用于CMF融合
+            # 如果有全局特征，将其扩展为相同的空间尺寸用于CIRA融合
             if global_feature is not None:
                 if self.global_proj is not None and global_feature.shape[1] != self.vision_width:
                     global_feature = self.global_proj(global_feature)
                 global_feat = global_feature.unsqueeze(-1).unsqueeze(-1).expand(B, self.vision_width, H, W)
                 # 使用CIRA进行跨模态融合
-                fused, _ = self.cmf_blocks[i](feat, global_feat)
+                fused, _ = self.cira_blocks[i](feat, global_feat)
             else:
                 # 如果没有全局特征，则使用自身作为参考
-                fused, _ = self.cmf_blocks[i](feat, feat)
+                fused, _ = self.cira_blocks[i](feat, feat)
             
             # 全局平均池化
             fused = torch.mean(fused.reshape(B, self.vision_width, -1), dim=-1)  # [B, C]
@@ -296,7 +296,7 @@ class Context_Prompting(nn.Module):
         self.PFL_abnormal = PFL.PlanarPFL_state(self.state_encoder, self.state_decoder, args)  # For image-agnostic distribution
 
 
-        self.fuse = CMF_Fuse(self.vision_width, self.text_width, num_layers=len(self.args.features_list))
+        self.fuse = CIRA_Fuse(self.vision_width, self.text_width, num_layers=len(self.args.features_list))
         self.RCA = Zero_Parameter(dim_v = self.vision_width, dim_t = self.text_width, dim_out= self.text_width, k = len(args.features_list))
         self.voga_blocks = nn.ModuleList([
             MultiOrderGatedAggregation(embed_dims=self.vision_width)
@@ -431,7 +431,7 @@ class Context_Prompting(nn.Module):
         else:
             text_embeddings_mapping = self.class_mapping(text_features)
             text_embeddings_mapping = text_embeddings_mapping / text_embeddings_mapping.norm(dim = -1, keepdim = True)
-            # 使用CMF融合patch特征和全局特征
+            # 使用CIRA融合patch特征和全局特征
             fused_feature = self.fuse(patch_tokens, image_features)
             image_embeddings_mapping = self.image_mapping(image_features + fused_feature)
             image_embeddings_mapping = image_embeddings_mapping / image_embeddings_mapping.norm(dim=-1, keepdim = True)
